@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  avatarData   String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  preferences    UserPreference?
+  learningPlans  LearningPlan[]
+  skillStates    UserSkillState[]
+  attempts       TaskAttempt[]
+  errors         LearningError[]
+  sessions       LearningSession[]
+  aiEvals        AiEvaluation[]
+  aiUsage        AiUsage[]
+  authSessions   AuthSession[]
+  chatSessions   ChatSession[]
+  chatMessages   ChatMessage[]
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model UserPreference {
+  userId          String    @id
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learningSince   String?
+  knowledgeLevel  String?
+  interestArea    String?
+  focusTopics     Json?
+  speakingContext String?
+  goal            String    @default("general")
+  minutesPerDay   Int       @default(10)
+  focusPreference String    @default("balanced")
+  goalText        String?
+  onboardedAt     DateTime?
+  diagnosedAt     DateTime?
+}
+
+
+model ChatSession {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String         @default("Новы дыялог")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  ChatMessage[]
+  plans     LearningPlan[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String?
+  session   ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String       @db.Text
+  planId    String?
+  createdAt DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+
+model LearningPlan {
+  id                  String       @id @default(cuid())
+  userId              String
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String
+  titleRu             String?
+  goalText            String
+  summary             String
+  summaryRu           String?
+  dailyMinutes        Int
+  content             Json
+  sources             Json?
+  status              String       @default("draft")
+  score               Int?
+  maxScore            Int?
+  completedAt         DateTime?
+  chatSessionId       String?
+  chatSession         ChatSession? @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  lastTaskExpansionAt DateTime?
+
+  skills Skill[]
+
+  @@index([userId, status])
+  @@index([chatSessionId])
+}
+
+model Skill {
+  id            String           @id
+  planId        String?
+  plan          LearningPlan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+  category      String
+  titleBe       String
+  titleRu       String?
+  descriptionBe String
+  descriptionRu String?
+  tasks         Task[]
+  userStates    UserSkillState[]
+}
+
+model UserSkillState {
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId         String
+  skill           Skill     @relation(fields: [skillId], references: [id])
+  mastery         Float     @default(0.2)
+  attempts        Int       @default(0)
+  correctAttempts Int       @default(0)
+  errorCount      Int       @default(0)
+  streak          Int       @default(0)
+  lastSeenAt      DateTime?
+  lastCorrectAt   DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@id([userId, skillId])
+}
+
+
+model Task {
+  id            String          @id
+  skillId       String
+  skill         Skill           @relation(fields: [skillId], references: [id])
+  type          String
+  level         String
+  prompt        String
+  options       Json?
+  answers       Json?
+  explanation   String?
+  explanationRu String?
+  source        String          @default("seed")
+  isDiagnostic  Boolean         @default(false)
+  active        Boolean         @default(true)
+  attempts      TaskAttempt[]
+  errors        LearningError[]
+}
+
+model TaskAttempt {
+  id           String           @id @default(cuid())
+  submissionId String           @unique
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId       String
+  task         Task             @relation(fields: [taskId], references: [id])
+  sessionId    String?
+  session      LearningSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  answer       String
+  isCorrect    Boolean
+  score        Float?
+  evaluated    Boolean          @default(true)
+  usedHint     Boolean          @default(false)
+  masteryDelta Float            @default(0)
+  testPhase    String?
+  createdAt    DateTime         @default(now())
+  error        LearningError?
+  aiEvaluation AiEvaluation?
+}
+
+model LearningError {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attemptId String      @unique
+  attempt   TaskAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      Task        @relation(fields: [taskId], references: [id])
+  skillId   String
+  category  String
+  createdAt DateTime    @default(now())
+
+  @@index([userId, skillId])
+}
+
+model LearningSession {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  startedAt DateTime      @default(now())
+  endedAt   DateTime?
+  attempts  TaskAttempt[]
+}
+
+model AiEvaluation {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attemptId String      @unique
+  attempt   TaskAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  kind      String
+  result    Json
+  model     String
+  createdAt DateTime    @default(now())
+}
+
+model AiUsage {
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([userId, windowStart])
+}

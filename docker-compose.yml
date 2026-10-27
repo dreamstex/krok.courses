@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: krok
+      POSTGRES_PASSWORD: krok
+      POSTGRES_DB: krok
+    ports:
+      - "5433:5432"
+    volumes:
+      - krok-pgdata:/var/lib/postgresql/data
+
+volumes:
+  krok-pgdata:
